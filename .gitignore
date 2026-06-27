@@ -1,0 +1,16 @@
+# Build output
+/build/
+/out/
+
+# Local runtime/user files
+/imgui.ini
+/~/
+
+# IDE
+.vs/
+.vscode/
+*.user
+
+# OS junk
+.DS_Store
+Thumbs.db
