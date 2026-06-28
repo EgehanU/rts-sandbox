@@ -1,10 +1,10 @@
 # RTS Sandbox
 
-A small real-time strategy sandbox written from scratch in C++20, using [raylib](https://www.raylib.com/) for rendering and [Dear ImGui](https://github.com/ocornut/imgui) for the debug tools.
+A small real time strategy sandbox written from scratch in C++20, using [raylib](https://www.raylib.com/) for rendering and [Dear ImGui](https://github.com/ocornut/imgui) for the debug tools.
 
-I worked with Raylib before however, I hadn't worked on an RTS before, so I built one to learn how the core systems actually work: selecting units, moving them around obstacles, keeping them in formation, and making the whole thing hold up when there are a few thousand units on the map. It's a tech demo, not a game. There's no win condition or enemy AI. The point is the systems underneath.
+I worked with Raylib before however, I have not worked on an RTS before, so I built one to learn how the core systems actually work, which consists of selecting units, moving them around obstacles, keeping them in formation, and making the whole thing hold up when there are a few thousand units on the map. It is a tech demo, not a game. There is no win condition or enemy AI. The point is the systems underneath.
 
-Everything here is hand written. The entity system, the pathfinding, the formations, the fog of war, none of it comes from an engine or a library. That was the whole idea, to understand the machinery by building it.
+Everything here is hand written. The entity system, the pathfinding, the formations, the fog of war, none of it comes from an engine or a library. That was the whole idea, to understand the the logic by building it.
 
 ![RTS Sandbox](docs/img_game.png)
 
@@ -14,9 +14,9 @@ Everything here is hand written. The entity system, the pathfinding, the formati
 
 - **Unit selection.** Drag a box to select a group, click to pick one, hold shift to add to the selection.
 - **Movement orders.** Right click to send the selected units somewhere.
-- **A\* pathfinding.** Units route around walls instead of walking through them, on a grid.
-- **Formations.** A group spreads into a grid shape at the destination instead of piling onto one point, and each unit is matched to its nearest slot so they don't cross over each other.
-- **Local avoidance.** Units push apart so they don't stack on top of one another.
+- **A\* pathfinding.** Units will go around the walls instead of passing through them. 
+- **Formations.** Group of chosen units forms a grid shape when they arrive at the destination. They do not cross over each other.
+- **Local avoidance.** Units push apart so they don't stack on top of each other.
 - **Fog of war.** The map starts dark and units reveal a circle around themselves as they move. Areas you've seen go dim, areas no one can currently see stay hidden.
 - **Live debug panel.** FPS, frame time, unit count, per system timings, and buttons to spawn 100 / 500 / 1000 units on the fly.
 - **Camera.** Pan with WASD, zoom with the mouse wheel, F11 for fullscreen.
@@ -25,32 +25,50 @@ Everything here is hand written. The entity system, the pathfinding, the formati
 
 ### Entity Component System
 
-The core is a custom sparse set ECS. Instead of modelling a unit as one big class with all its data inside, each kind of data (position, velocity, health, selection state and so on) lives in its own tightly packed array, and an entity is just an id that ties them together.
+The project uses a small ECS built around sparse sets. I did not want units to turn into one huge class that knows about everything: position, health, selection, movement, pathing, whatever else gets added later. So those things are separate components instead. A unit is mostly just an id, and the id is what lets the systems find its data.
 
-The reason for this is cache efficiency. When a system only needs position and velocity, like the movement code does, it walks two contiguous arrays and every byte the CPU pulls into cache is a byte it actually uses. With a big class approach, iterating units would drag health, selection flags and everything else into cache too, wasting most of it. At a handful of units it makes no difference. At a few thousand, every frame, it's the difference between smooth and not.
+That matters once there are a lot of units on screen. The movement code does not need to know a unit's health or whether it is selected. It only needs positions and velocities. Keeping those things packed together means it can go through the data it needs without constantly stepping over unrelated stuff.
 
-The sparse set itself is the standard trick for this. A packed dense array holds the data, a sparse array maps an entity id to its slot in the dense array for O(1) lookup, and removal uses swap and pop so the dense array never grows holes. Entities use a generation counter packed into the id, so a recycled slot doesn't make old handles silently point at the wrong unit.
+At low unit counts, none of this is a big deal. You could probably throw everything into a `Unit` class and never notice. The point of doing it this way was to avoid that becoming a problem once the sandbox had a few thousand units ticking every frame.
+
+The sparse set itself is fairly simple. The component data sits in a dense array, and another array maps entity ids back to where their data lives in that dense array. So looking up a component is O(1), but iterating over all of them is still just walking through packed memory.
+
+Removing something is also cheap. I swap it with the last item in the dense array and pop it off. No gaps, no shifting half the array around. Entity ids also include a generation value, so an old id cannot accidentally become valid again just because that slot got reused for a new unit.
 
 ### Pathfinding
 
-Grid based A\* with 8 directional movement and an octile distance heuristic. A couple of details took some iteration:
+Movement uses grid based A\* with 8 directional movement and an octile distance heuristic.
 
-- **Obstacle inflation.** A\* treats a unit as a point, but units have a body, so a path that hugs a wall makes the unit clip the corner and get stuck. Pathfinding runs on a copy of the grid where walls are fattened by roughly a unit radius, so paths keep clearance. The thin walls are still what gets drawn, so the player sees normal walls while the pathfinder sees slightly bigger ones.
-- **Nearest open cell retargeting.** Clicking right next to a wall used to land the goal inside the inflated zone, which A\* sees as blocked, so units just refused to move. Now if the goal is blocked it spirals outward to the closest open cell, so clicking near a wall still sends units as close as they can safely get.
+The first version was fine until I started moving units near walls. A\* only sees grid cells. It does not know that the unit sprite or collision body has width.
+
+- **Obstacle inflation.** A path can technically fit through a tight corner on the grid, but then the actual unit catches the wall and gets stuck. I fixed that by making a separate pathfinding grid where obstacles are expanded slightly. The player still sees the original walls, but the pathfinder treats them as a bit wider and gives units more room.
+- **Nearest open cell retargeting.** This caused another small issue. Clicking close to a wall could mean the clicked cell was inside the inflated obstacle area. In that case the pathfinder thought the destination was blocked and the units just stood there. Now it checks nearby cells and picks the closest valid one, so the order still does something sensible.
 
 ### Formations
 
-When a group is ordered to a point, it lays out a grid of slots centered on the click, then matches units to slots greedily by nearest distance. Greedy isn't mathematically optimal, but it's cheap and it stops units crossing the whole formation to reach a far off slot. Each unit then pathfinds to its own slot, which reuses the A\* above unchanged.
+For group movement, the game makes a grid of formation slots around the place you clicked. Units are then assigned to those slots based on which ones are closest.
+
+It is greedy, so it is not the best possible assignment in a mathematical sense. I was fine with that. It is quick, and it avoids the obvious nonsense where a unit from the far left runs all the way across the group while another one runs back in the other direction.
+
+Once the slots are assigned, there is nothing special left to do. Each unit gets its own target slot and uses the same A\* pathfinding as normal movement.
 
 ### Fog of war
 
-Three states per cell: hidden, explored, visible. Each frame, everything currently visible drops back to explored, then every unit re lights the cells within its vision radius. That demote then recompute step is what makes the bright circle follow the units around and leave a dimmed trail behind. There are no enemies yet, so explored versus visible is mostly cosmetic here, but it's the correct model and enemy units would slot straight into it.
+Each cell is either hidden, explored, or currently visible.
+
+Every frame, visible cells are first changed back to explored. Then the units mark the cells around them as visible again. That is what gives the fog its usual RTS behaviour: the area around your units is bright, while places you have already been stay visible but darker.
+
+There are no enemies in the sandbox yet, so the difference between explored and visible is mostly there for the visuals right now. But the data is already there for hiding enemy units later.
 
 ## Performance
 
-The simulation is CPU bound. It draws flat 2D shapes, so the GPU is never the bottleneck. Pathfinding and per unit updates are. To find where the time actually went I built a small benchmark harness that runs each system in isolation, with no rendering and no input, at fixed unit counts and averages over a few hundred frames.
+The simulation is mostly CPU limited. Rendering is just simple 2D drawing, so the GPU is not where the time goes. The expensive part is updating lots of units, finding paths, checking separation, and doing that every frame.
 
-The first thing it surfaced was that unit separation was O(n²). It compared every unit against every other unit, so each time the unit count doubled, its cost quadrupled. At 4000 units it alone ate about 7ms of the 16.6ms frame budget.
+I added a benchmark mode because guessing was getting useless. It runs the systems without input or rendering, uses fixed unit counts, and averages the timings across a few hundred frames.
+
+The first bad result was unit separation. The original version checked every unit against every other unit. That is O(n²), which gets ugly very quickly. Double the number of units and you are doing about four times as many checks.
+
+At 4000 units, separation alone was taking around 7 ms. With a 16.6 ms frame budget for 60 FPS, that was already too much time for one system before pathfinding or anything else had even been added.
 
 ![fps under load](docs/fps_demo.gif)
 
@@ -97,22 +115,9 @@ Built and tested with MinGW-w64 GCC on Windows. The first configure takes a minu
 | Zoom | mouse wheel |
 | Fullscreen | F11 |
 
-## Project layout
 
-```
-src/
-  ecs/         entity system: entities, sparse set, registry, components
-  world/       grid and A* pathfinding
-  systems/     selection, orders, movement, separation, fog, rendering
-  debug/       profiler and ImGui panel
-  bench/       the benchmark harness
-```
 
-## What I'd do next
-
-A few things I deliberately left out of scope, in rough priority order:
-
-- **Console and proprietary engine concerns.** This is pure desktop and rolls its own engine. The obvious next step is mapping these ideas onto a real production toolchain.
-- **Multithreaded pathfinding.** A\* requests are independent, so they'd parallelize well across a job system.
-- **Smarter separation.** Proper steering so units flow around each other in transit rather than just being pushed apart.
-- **Deterministic, fixed timestep simulation.** Needed for replays and the foundation of any networked RTS.
+## Upcoming Improvements
+I am planning to implement a few more details, such as;
+- **Multithreaded pathfinding.** A\* requests are independent, so they will parallelize well across a job system.
+- **Deterministic, fixed timestep simulation.** Needed for replays and the foundation of any networked RTS
