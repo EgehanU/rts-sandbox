@@ -8,49 +8,45 @@ Everything here is hand written. The entity system, the pathfinding, the formati
 
 ![RTS Sandbox](docs/img_game.png)
 
-## What it does
+## How it works
 
 ![gameplay](docs/display.gif)
-
-- **Unit selection.** Drag a box to select a group, click to pick one, hold shift to add to the selection.
+There are several aspects:
+- **Unit selection.** Drag a box, or click a unit to select it. If shift key is being hold, multiple units can be chosen by clicking.
 - **Movement orders.** Right click to send the selected units somewhere.
-- **A\* pathfinding.** Units will go around the walls instead of passing through them. 
-- **Formations.** Group of chosen units forms a grid shape when they arrive at the destination. They do not cross over each other.
-- **Local avoidance.** Units push apart so they don't stack on top of each other.
-- **Fog of war.** The map starts dark and units reveal a circle around themselves as they move. Areas you've seen go dim, areas no one can currently see stay hidden.
-- **Live debug panel.** FPS, frame time, unit count, per system timings, and buttons to spawn 100 / 500 / 1000 units on the fly.
+- **A\* pathfinding.** Units will find the shortest route by A*, however they will go around the obstacles, not through them.
+- **Formations.** The chosen units forms a square like formation.
+- **Local avoidance.** Units push apart so they do not come on top of each other.
+- **Fog of war.** The map starts dark, if a unit is close by, then it is considered as discovered, and it could be either lit or dim, depending on units present.
+- **Live debug panel.** FPS, frame time, unit count, per system timings, and buttons to spawn 100/500/1000 units on the fly.
 - **Camera.** Pan with WASD, zoom with the mouse wheel, F11 for fullscreen.
 
 ## How it's built
 
 ### Entity Component System
 
-The project uses a small ECS built around sparse sets. I did not want units to turn into one huge class that knows about everything: position, health, selection, movement, pathing, whatever else gets added later. So those things are separate components instead. A unit is mostly just an id, and the id is what lets the systems find its data.
+The project uses a small ECS build around sparse sets. Every aspect of the unit, such as, position, health, selection, movement, pathing, and whatever else that could be added later on, is a seperate component. A unit is basically an ID, and this ID is used for system to find required data.
 
-That matters once there are a lot of units on screen. The movement code does not need to know a unit's health or whether it is selected. It only needs positions and velocities. Keeping those things packed together means it can go through the data it needs without constantly stepping over unrelated stuff.
+This approach was used because once, there are a lot of units present, using every components would be wastefull. For instance, the movement code does not need to know the health of a unit, it will only require position and velocity.
 
-At low unit counts, none of this is a big deal. You could probably throw everything into a `Unit` class and never notice. The point of doing it this way was to avoid that becoming a problem once the sandbox had a few thousand units ticking every frame.
+The component data sits in a dense array, and another array maps entity ids back to where their data lives in that dense array. So looking up a component is O(1), but iterating over all of them is still just walking through packed memory.
 
-The sparse set itself is fairly simple. The component data sits in a dense array, and another array maps entity ids back to where their data lives in that dense array. So looking up a component is O(1), but iterating over all of them is still just walking through packed memory.
-
-Removing something is also cheap. I swap it with the last item in the dense array and pop it off. No gaps, no shifting half the array around. Entity ids also include a generation value, so an old id cannot accidentally become valid again just because that slot got reused for a new unit.
+Removing something is also cheap. I swap it with the last item in the dense array and pop it off. No gaps, no shifting half the array around. Entity ids also include a generation value, so an old ID cannot accidentally become valid again just because that slot got reused for a new unit.
 
 ### Pathfinding
 
-Movement uses grid based A\* with 8 directional movement and an octile distance heuristic.
+For the movement, A* with 8 directional movement is used, with its heuristic being octile distance. 
 
 The first version was fine until I started moving units near walls. A\* only sees grid cells. It does not know that the unit sprite or collision body has width.
 
-- **Obstacle inflation.** A path can technically fit through a tight corner on the grid, but then the actual unit catches the wall and gets stuck. I fixed that by making a separate pathfinding grid where obstacles are expanded slightly. The player still sees the original walls, but the pathfinder treats them as a bit wider and gives units more room.
+- **Obstacle inflation.** A path can technically fit through a tight corner on the grid, but then the actual unit can get stucked by the boundary of walls. I fixed that by making a separate pathfinding grid where obstacles are expanded slightly, so an incremented trshold. The player still sees the original walls, but the pathfinder treats them as a bit bigger and gives units more room.
+- 
 - **Nearest open cell retargeting.** This caused another small issue. Clicking close to a wall could mean the clicked cell was inside the inflated obstacle area. In that case the pathfinder thought the destination was blocked and the units just stood there. Now it checks nearby cells and picks the closest valid one, so the order still does something sensible.
 
 ### Formations
+When a group of units chosen, they form a square resembling grid around the place that is right clicked. Following to that, units are assigned to those slots based on which ones are closest. This is a greedy appoach, so not the best way of doing this. However for this stage it gives acceptable results. 
 
-For group movement, the game makes a grid of formation slots around the place you clicked. Units are then assigned to those slots based on which ones are closest.
-
-It is greedy, so it is not the best possible assignment in a mathematical sense. I was fine with that. It is quick, and it avoids the obvious nonsense where a unit from the far left runs all the way across the group while another one runs back in the other direction.
-
-Once the slots are assigned, there is nothing special left to do. Each unit gets its own target slot and uses the same A\* pathfinding as normal movement.
+Once the slots are assigned, there is nothing special left to do. Each uni gets its own targer slot and uses the same A\* pathfinding as normal movement.
 
 ### Fog of war
 
