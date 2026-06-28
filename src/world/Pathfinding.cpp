@@ -97,15 +97,22 @@ std::vector<PathPoint> find_path(const Grid& grid,
 
             if (grid.is_blocked(nx, ny)) continue;   // wall or off-grid, skip
 
-            // diagonal moves cost more than straight ones
             bool diagonal = (dirX[d] != 0 && dirY[d] != 0);
+
+            // a diagonal move passes through the corner where two cells meet
+            // if both of those cells are walls, the unit would clip the corner,
+            // so dont allow that diagonal
+            if (diagonal &&(grid.is_blocked(cx + dirX[d], cy) || grid.is_blocked(cx, cy + dirY[d])))
+                continue;
+
+            //diagonal moves cost more than straight ones
             float stepCost = diagonal ? 1.414f : 1.0f;
 
             int neighbor = grid.index(nx, ny);
             float tentative = gScore[current] + stepCost;
 
             // if a cheaper way found
-            if (tentative < gScore[neighbor]) {
+            if (tentative < gScore[neighbor]){
                 cameFrom[neighbor] = current;
                 gScore[neighbor] = tentative;
                 float f = tentative + heuristic(nx, ny, goalCx, goalCy);
