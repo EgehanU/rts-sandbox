@@ -36,9 +36,11 @@ public:
         return make_entity(index, 0);
     }
 
-    bool valid(Entity e) const{
+   bool valid(Entity e) const{
         std::uint32_t i = entity_index(e);
-        return i < generations.size() && generations[i] == entity_generation(e);
+        // mask the counter to 12 bits so it matches the handles generation field
+        // entity_generation already returns just those 12 bits
+        return i < generations.size() && (generations[i] & 0xFFFu) == entity_generation(e);
     }
 
     void destroy(Entity e){
