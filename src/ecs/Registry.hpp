@@ -81,7 +81,8 @@ public:
 
         for (std::uint32_t i : indices){
             Entity e = make_entity(i, generations[i]);
-            if (!pb.has(e)) continue; //no B, skip it
+            if (!pa.has(e) || !pb.has(e)) 
+                continue; // need both A and B still
             fn(e, pa.get(e), pb.get(e));
         }
     }
