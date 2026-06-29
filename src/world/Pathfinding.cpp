@@ -48,17 +48,24 @@ static int nearest_open_cell(const Grid& grid, int cx, int cy){
     return -1;   //nothing open nearby, give up
 }
 
-std::vector<PathPoint> find_path(const Grid& grid,
-                                 float startX, float startY,
-                                 float goalX, float goalY) {
-    int startCx = grid.world_to_cell_x(startX);
-    int startCy = grid.world_to_cell_y(startY);
-    int goalCx  = grid.world_to_cell_x(goalX);
-    int goalCy  = grid.world_to_cell_y(goalY);
+std::vector<PathPoint> find_path(const Grid& grid, float startX, float startY,float goalX, float goalY) {
+    int startCx =grid.world_to_cell_x(startX);
+    int startCy =grid.world_to_cell_y(startY);
+    int goalCx  =grid.world_to_cell_x(goalX);
+    int goalCy  =grid.world_to_cell_y(goalY);
+
+    // clamp the start the same way as the goal. is_blocked is true for
+    // off-grid cells too, so this also catches a start outside the map
+    if (grid.is_blocked(startCx, startCy)){
+        int open = nearest_open_cell(grid, startCx, startCy);
+        if (open==-1) return {};
+        startCx =open % grid.width;
+        startCy =open / grid.width;
+    }
 
         if (grid.is_blocked(goalCx, goalCy)){
             int open = nearest_open_cell(grid, goalCx, goalCy);
-            if (open == -1) return{};
+            if (open==-1) return{};
             goalCx = open % grid.width;
             goalCy = open / grid.width;
     }
