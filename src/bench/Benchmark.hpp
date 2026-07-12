@@ -18,12 +18,15 @@ inline void run_benchmark(int count,int frames){
     Grid grid(63, 63, 32.0f);
     FogMap fog(grid.width, grid.height);
 
+    int worldW = (int)(grid.width * grid.cellSize);
+    int worldH = (int)(grid.height * grid.cellSize);
+
     for (int i = 0; i < count; i++){
         Entity e =reg.create();
-        float x = (float)(rand() % 2000);
-        float y = (float)(rand() % 2000);
+        float x= (float)(rand() % worldW);
+        float y= (float)(rand() % worldH);
         reg.add<Position>(e, {x,y});
-        reg.add<Velocity>(e, {0, 0});
+        reg.add<Velocity>(e,{0, 0});
         reg.add<Selectable>(e, {});
         reg.add<Path>(e, {});
         reg.add<Vision>(e, {});
