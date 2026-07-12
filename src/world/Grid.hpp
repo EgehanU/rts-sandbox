@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 #include <cstdint>
-
+#include <cmath>
 namespace rts{
 
 // the world described into square cells. each cell is either open or blocked
@@ -41,14 +41,14 @@ struct Grid{
     }
 
     // world position, which cell it falls in
-    int world_to_cell_x(float wx) const{ 
-        return (int)(wx / cellSize); 
+    int world_to_cell_x(float wx) const{
+        return (int)std::floor(wx / cellSize);
     }
     int world_to_cell_y(float wy) const{ 
-        return (int)(wy / cellSize); 
+        return (int)std::floor(wy / cellSize);
     }
 
-    // not corners, so they walk down the middle of open lanes
+    //not corners, so they walk down the middle of open lanes
     float cell_to_world_x(int cx) const { return (cx + 0.5f) * cellSize; }
     float cell_to_world_y(int cy) const { return (cy + 0.5f) * cellSize; }
 };

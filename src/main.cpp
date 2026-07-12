@@ -18,21 +18,21 @@
 
 using namespace rts;
 
-// spawn `count` units on open cells. shared by the initial spawn and the
-// debug buttons so there's one place that knows how to make a unit
 static void spawn_units(Registry& reg, const Grid& grid, int count) {
-    for (int i = 0; i < count; i++) {
+    int worldW = (int)(grid.width *grid.cellSize);
+    int worldH = (int)(grid.height *grid.cellSize);
+    for (int i = 0; i < count; i++){
         float x, y;
-        do {
-            x = (float)(rand() % 2000);
-            y = (float)(rand() % 2000);
-        } while (grid.is_blocked(grid.world_to_cell_x(x), grid.world_to_cell_y(y)));
+        do{
+            x =(float)(rand() % worldW);
+            y =(float)(rand() % worldH);
+        }while (grid.is_blocked(grid.world_to_cell_x(x), grid.world_to_cell_y(y)));
 
         Entity e = reg.create();
-        reg.add<Position>(e, {x, y});
+        reg.add<Position>(e,{x, y});
         reg.add<Velocity>(e, {0, 0});
         reg.add<Selectable>(e, {});
-        reg.add<Path>(e, {});
+        reg.add<Path>(e,{});
         reg.add<Vision>(e, {});
     }
 }
